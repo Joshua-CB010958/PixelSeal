@@ -1,1 +1,1 @@
-Light wieght Batch Image Watermaker
+Light weight Batch Image Watermaker
