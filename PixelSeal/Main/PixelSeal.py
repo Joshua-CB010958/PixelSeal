@@ -5,12 +5,44 @@ from PIL import Image, ImageOps
 
 # Enable HEIC/HEIF support via pillow-heif if available
 try:
-    from pillow_heif import register_heif
+    # pillow-heif exposes either register_heif (newer) or register_heif_opener (older). Try both.
+    try:
+        from pillow_heif import register_heif  # type: ignore
 
-    register_heif()
+        register_heif()
+    except Exception:
+        from pillow_heif import register_heif_opener  # type: ignore
+
+        register_heif_opener()
 except Exception:
     # If pillow-heif isn't installed, the app will still run but won't open HEIC until deps are installed
     pass
+
+
+def open_image_any(path: str) -> Image.Image:
+    """Open an image with Pillow; if HEIC/HEIF fails, try pillow-heif fallback.
+
+    Returns a Pillow Image in RGBA mode to preserve transparency handling.
+    Raises the original exception if all attempts fail.
+    """
+    try:
+        img = Image.open(path)
+        return img
+    except Exception as pil_err:
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".heic", ".heif"):
+            try:
+                # Fallback decode using pillow_heif open_heif if available
+                from pillow_heif import open_heif  # type: ignore
+
+                heif_file = open_heif(path)
+                # Construct a Pillow image from the HEIF data
+                pil_img = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
+                return pil_img
+            except Exception as heif_err:
+                # Attach both errors for clarity
+                raise RuntimeError(f"Pillow couldn't open file ({pil_err}); pillow-heif fallback also failed ({heif_err})")
+        raise
 
 # Initialize main application
 root = tk.Tk()
@@ -84,19 +116,19 @@ def apply_watermark():
 
     # Attempt to open watermark/logo; show a friendly error if a format isn't supported
     try:
-        watermark = Image.open(watermark_path).convert("RGBA") if watermark_path else None
+        watermark = open_image_any(watermark_path).convert("RGBA") if watermark_path else None
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open watermark: {e}")
         return
     try:
-        logo = Image.open(logo_path).convert("RGBA") if logo_path else None
+        logo = open_image_any(logo_path).convert("RGBA") if logo_path else None
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open logo: {e}")
         return
 
     for img_path in selected_images:
         try:
-            img = Image.open(img_path).convert("RGBA")
+            img = open_image_any(img_path).convert("RGBA")
         except Exception as e:
             messagebox.showwarning("Skip", f"Could not open {os.path.basename(img_path)}: {e}\nSkipping.")
             continue
