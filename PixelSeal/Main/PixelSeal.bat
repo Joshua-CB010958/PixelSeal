@@ -1,4 +1,6 @@
 @echo off
+:: Ensure we run from the script directory
+cd /d "%~dp0"
 :: Check if python is installed
 python --version
 if %errorlevel% neq 0 (

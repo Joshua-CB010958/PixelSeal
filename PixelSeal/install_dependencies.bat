@@ -9,17 +9,14 @@ if %errorlevel% neq 0 (
 :: Upgrade pip to the latest version
 python -m pip install --upgrade pip
 
-:: Install Pillow (for image processing)
-pip install pillow
+:: Install Pillow (for image processing) and HEIC/HEIF support
+python -m pip install --upgrade pillow pillow-heif
 
 :: Install tkinter (if not already installed, but usually included with Python)
-pip install tk
+python -m pip install tk
 
 :: Optionally, if you need any other dependencies, you can add them here
 :: pip install other-dependency
 
-:: Run your Python script
-python your_script_name.py
-
-echo Dependencies installed and script executed successfully.
+echo Dependencies installed successfully.
 pause

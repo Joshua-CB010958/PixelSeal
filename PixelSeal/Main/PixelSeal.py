@@ -3,6 +3,15 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageOps
 
+# Enable HEIC/HEIF support via pillow-heif if available
+try:
+    from pillow_heif import register_heif
+
+    register_heif()
+except Exception:
+    # If pillow-heif isn't installed, the app will still run but won't open HEIC until deps are installed
+    pass
+
 # Initialize main application
 root = tk.Tk()
 root.title("Pixel Seal")
@@ -16,21 +25,45 @@ watermark_scale = 0.3  # Default scale for watermark size
 
 def select_watermark():
     global watermark_path
-    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+    file_path = filedialog.askopenfilename(
+        filetypes=[
+            ("Image Files", "*.png;*.jpg;*.jpeg;*.heic;*.heif"),
+            ("PNG", "*.png"),
+            ("JPEG", "*.jpg;*.jpeg"),
+            ("HEIC/HEIF", "*.heic;*.heif"),
+            ("All files", "*.*"),
+        ]
+    )
     if file_path:
         watermark_path = file_path
         wm_label.config(text=f"Selected: {os.path.basename(file_path)}")
 
 def select_logo():
     global logo_path
-    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+    file_path = filedialog.askopenfilename(
+        filetypes=[
+            ("Image Files", "*.png;*.jpg;*.jpeg;*.heic;*.heif"),
+            ("PNG", "*.png"),
+            ("JPEG", "*.jpg;*.jpeg"),
+            ("HEIC/HEIF", "*.heic;*.heif"),
+            ("All files", "*.*"),
+        ]
+    )
     if file_path:
         logo_path = file_path
         logo_label.config(text=f"Selected: {os.path.basename(file_path)}")
 
 def select_images():
     global selected_images
-    file_paths = filedialog.askopenfilenames(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+    file_paths = filedialog.askopenfilenames(
+        filetypes=[
+            ("Image Files", "*.png;*.jpg;*.jpeg;*.heic;*.heif"),
+            ("PNG", "*.png"),
+            ("JPEG", "*.jpg;*.jpeg"),
+            ("HEIC/HEIF", "*.heic;*.heif"),
+            ("All files", "*.*"),
+        ]
+    )
     if file_paths:
         selected_images = list(file_paths)
         img_label.config(text=f"Selected {len(selected_images)} images")
@@ -49,12 +82,31 @@ def apply_watermark():
     if not output_folder:
         return
 
-    watermark = Image.open(watermark_path).convert("RGBA") if watermark_path else None
-    logo = Image.open(logo_path).convert("RGBA") if logo_path else None
+    # Attempt to open watermark/logo; show a friendly error if a format isn't supported
+    try:
+        watermark = Image.open(watermark_path).convert("RGBA") if watermark_path else None
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open watermark: {e}")
+        return
+    try:
+        logo = Image.open(logo_path).convert("RGBA") if logo_path else None
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open logo: {e}")
+        return
 
     for img_path in selected_images:
-        img = Image.open(img_path).convert("RGBA")
-        img = ImageOps.exif_transpose(img)  # Correct the orientation if necessary
+        try:
+            img = Image.open(img_path).convert("RGBA")
+        except Exception as e:
+            messagebox.showwarning("Skip", f"Could not open {os.path.basename(img_path)}: {e}\nSkipping.")
+            continue
+
+        # Correct the orientation if necessary
+        try:
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            # Some formats may not have EXIF; ignore
+            pass
 
         # Apply logo (top-left)
         if logo:
@@ -76,8 +128,20 @@ def apply_watermark():
             img.paste(watermark_resized, (wm_x, wm_y), watermark_resized)
 
         # Save output
-        output_path = os.path.join(output_folder, os.path.basename(img_path))
-        img.convert("RGB").save(output_path)
+        # Determine output path. If input is HEIC/HEIF, save as JPEG for compatibility.
+        base_name = os.path.basename(img_path)
+        name, ext = os.path.splitext(base_name)
+        if ext.lower() in (".heic", ".heif"):
+            out_name = f"{name}.jpg"
+        else:
+            out_name = base_name
+        output_path = os.path.join(output_folder, out_name)
+
+        # Save as JPEG/PNG depending on extension. Default to JPEG for non-alpha result.
+        try:
+            img.convert("RGB").save(output_path, quality=95)
+        except Exception as e:
+            messagebox.showwarning("Save Failed", f"Failed to save {out_name}: {e}")
 
     messagebox.showinfo("Success", "Watermarking complete!")
 
